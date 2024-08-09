@@ -2862,6 +2862,14 @@ ag-grid-community@32.1.0:
   dependencies:
     ag-charts-types "10.1.0"
 
+ag-grid-enterprise@^32.1.0:
+  version "32.1.0"
+  resolved "https://registry.npmjs.org/ag-grid-enterprise/-/ag-grid-enterprise-32.1.0.tgz"
+  integrity sha512-FXAcWRNBg37fz0QW6zx8wuC0rmVraN9vgsCNkjcahwT73zCXvbcBNluN14bimRVm9c3j5I2iBmC8+QXTYePmLg==
+  dependencies:
+    ag-charts-community "10.1.0"
+    ag-grid-community "32.1.0"
+
 ag-grid-react@^32.1.0:
   version "32.1.0"
   resolved "https://registry.npmjs.org/ag-grid-react/-/ag-grid-react-32.1.0.tgz"

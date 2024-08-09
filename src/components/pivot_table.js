@@ -1,9 +1,16 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import Papa from "papaparse";
 import { AgGridReact } from 'ag-grid-react';
+import 'ag-grid-enterprise'; // Import Ag-Grid Enterprise modules
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import { Box, Typography, CircularProgress, Button } from '@mui/material';
+
+// Import Ag-Grid Enterprise License Manager
+import { LicenseManager } from 'ag-grid-enterprise';
+
+// Set your Ag-Grid Enterprise license key
+LicenseManager.setLicenseKey('YOUR_LICENSE_KEY_HERE');
 
 const PivotTable = () => {
     const [allRows, setAllRows] = useState([]);
@@ -94,6 +101,22 @@ const PivotTable = () => {
         params.api.applyColumnState({ state: savedState, applyOrder: true });
     };
 
+    // Function to create chart
+    const createChart = () => {
+        if (gridRef.current) {
+            const chartParams = {
+                chartType: 'column',
+                aggFunc: 'sum',
+                cellRange: {
+                    rowStartIndex: 0,
+                    rowEndIndex: data.length - 1,
+                    columns: ['yourColumnName'] // Replace with your column name
+                }
+            };
+            gridRef.current.createRangeChart(chartParams);
+        }
+    };
+
     return (
         <Box>
             <Box sx={{ padding: 3 }}>
@@ -111,6 +134,9 @@ const PivotTable = () => {
 
                 {!loading && !error && (
                     <>
+                        <Button onClick={createChart} variant="contained" color="primary">
+                            Create Chart
+                        </Button>
                         <div style={containerStyle}>
                             <div
                                 className={"ag-theme-alpine"} // Ensure correct theme is applied
@@ -126,6 +152,8 @@ const PivotTable = () => {
                                     suppressPaginationPanel={false} // Ensure pagination panel is shown
                                     onColumnResized={onColumnResized} // Save state on resize
                                     onGridReady={onGridReady} // Restore saved column state
+                                    enableCharts={true} // Enable charts
+                                    enableRangeSelection={true} // Enable range selection
                                 />
                             </div>
                         </div>
@@ -134,7 +162,6 @@ const PivotTable = () => {
             </Box>
         </Box>
     );
-
 };
 
 export default PivotTable;
