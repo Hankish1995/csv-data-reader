@@ -134,6 +134,7 @@ const PivotTable = () => {
             </Box>
         </Box>
     );
+
 };
 
 export default PivotTable;
