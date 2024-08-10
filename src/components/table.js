@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Papa from "papaparse";
+import HighchartsReact from 'highcharts-react-official';
+import Highcharts from 'highcharts';
 import {
     Box,
     CircularProgress,
@@ -16,19 +18,48 @@ import {
     TextField,
 } from "@mui/material";
 import { format } from "date-fns";
+import { useNavigate } from "react-router-dom";
 
 const Table = () => {
+    const navigate = useNavigate()
     const [allRows, setAllRows] = useState([]);
     const [data, setData] = useState([]);
     const [totalPages, setTotalPages] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [selectedEntityType, setSelectedEntityType] = useState(null);
     const [page, setPage] = useState(0);
     const [sortColumn, setSortColumn] = useState(null);
     const [sortDirection, setSortDirection] = useState("asc");
     const [filters, setFilters] = useState({});
+    const [selectedColumn, setSelectedColumn] = useState(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [columnWidths, setColumnWidths] = useState({});
 
     const PAGE_SIZE = 10;
+    const tableHeaderRefs = useRef([]);
+
+    useEffect(() => {
+        try {
+            const savedWidths = JSON.parse(localStorage.getItem('columnWidths')) || {};
+            console.log('Loaded column widths from localStorage:', savedWidths);
+            setColumnWidths(savedWidths);
+        } catch (err) {
+            console.error("Error loading column widths from localStorage:", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('columnWidths', JSON.stringify(columnWidths));
+    }, [columnWidths]);
+
+    useEffect(() => {
+        tableHeaderRefs.current.forEach((th, index) => {
+            if (th) {
+                th.style.width = `${columnWidths[index] || 100}px`; // Default width
+            }
+        });
+    }, [columnWidths]);
 
     useEffect(() => {
         const fetchCsvData = async () => {
@@ -60,7 +91,7 @@ const Table = () => {
 
     useEffect(() => {
         updatePaginatedData(allRows);
-    }, [page, sortColumn, sortDirection, filters]);
+    }, [page, sortColumn, sortDirection, filters, searchQuery]);
 
     const applyFilters = (rows) => {
         return rows.filter((row) => {
@@ -81,14 +112,27 @@ const Table = () => {
             if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
             if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
             return 0;
+
+        });
+    };
+
+    const applySearch = (rows) => {
+        if (!searchQuery) return rows;
+
+        const lowerCaseSearchQuery = searchQuery.toLowerCase();
+        return rows.filter(row => {
+            return Object.values(row).some(value =>
+                value.toString().toLowerCase().includes(lowerCaseSearchQuery)
+            );
         });
     };
 
     const updatePaginatedData = (rows) => {
         const filteredData = applyFilters(rows);
-        const sortedData = sortData(filteredData);
+        const searchedData = applySearch(filteredData);
+        const sortedData = sortData(searchedData);
 
-        if (filteredData.length === 0) {
+        if (searchedData.length === 0) {
             setData([]);
             setTotalPages(1);
             return;
@@ -99,12 +143,7 @@ const Table = () => {
             (page + 1) * PAGE_SIZE
         );
         setData(paginatedData);
-        setTotalPages(Math.ceil(filteredData.length / PAGE_SIZE));
-
-        console.log("All Rows:", allRows);
-        console.log("Filtered Data:", filteredData);
-        console.log("Sorted Data:", sortedData);
-        console.log("Paginated Data:", paginatedData);
+        setTotalPages(Math.ceil(searchedData.length / PAGE_SIZE));
     };
 
     const handleSort = (column) => {
@@ -112,6 +151,8 @@ const Table = () => {
             sortColumn === column && sortDirection === "asc" ? "desc" : "asc";
         setSortColumn(column);
         setSortDirection(newDirection);
+        setSelectedColumn(column);
+        setSelectedEntityType(column === 'entity_type' ? column : null);
         updatePaginatedData(allRows);
     };
 
@@ -153,54 +194,191 @@ const Table = () => {
         }
     };
 
+    const groupBy = (array, key) => {
+        return array.reduce((result, currentValue) => {
+            (result[currentValue[key]] = result[currentValue[key]] || []).push(
+                currentValue
+            );
+            return result;
+        }, {});
+    };
+
+    const prepareChartData = (data, filters, selectedColumn, selectedEntityType) => {
+        let filteredData = data;
+
+        if (filters.entity_type) {
+            filteredData = data.filter(row => row.entity_type === filters.entity_type);
+        }
+
+        if (selectedEntityType) {
+            filteredData = filteredData.filter(row => row.entity_type === selectedEntityType);
+        }
+
+        const groupedData = groupBy(filteredData, selectedColumn);
+
+        const chartData = Object.entries(groupedData).map(([key, values]) => ({
+            name: key,
+            count: values.length
+        }));
+
+        // Handle empty data
+        if (chartData.length === 0) {
+            return [{ name: 'No data', count: 0 }];
+        }
+
+        return chartData;
+    };
+
+    const getChartOptions = () => {
+        const chartData = prepareChartData(allRows, filters, selectedColumn, selectedEntityType);
+
+        return {
+            chart: {
+                type: 'column'
+            },
+            title: {
+                text: 'Chart Title'
+            },
+            xAxis: {
+                type: 'category',
+                categories: chartData.map(item => item.name)
+            },
+            yAxis: {
+                title: {
+                    text: 'Count'
+                }
+            },
+            series: [{
+                name: 'Count',
+                data: chartData.map(item => item.count)
+            }]
+        };
+    };
+
+    const [chartOptions, setChartOptions] = useState({});
+
+    useEffect(() => {
+        if (allRows.length > 0 && selectedColumn) {
+            setChartOptions(getChartOptions());
+        }
+    }, [allRows, filters, selectedColumn]);
+
+    const handleResizeMouseDown = (e, index) => {
+        e.preventDefault();
+        const th = tableHeaderRefs.current[index];
+        if (!th) return;
+
+        const startX = e.clientX;
+        const startWidth = th.getBoundingClientRect().width;
+
+        const handleMouseMove = (e) => {
+            const newWidth = startWidth + (e.clientX - startX);
+            setColumnWidths((prev) => {
+                const updatedWidths = {
+                    ...prev,
+                    [index]: newWidth
+                };
+                console.log('Saving to localStorage:', updatedWidths);
+                localStorage.setItem('columnWidths', JSON.stringify(updatedWidths)); // Save to localStorage
+                return updatedWidths;
+            });
+        };
+
+        const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const handleSearchChange = (e) => {
+        setSearchQuery(e.target.value);
+        setPage(0);
+    };
+
+
     return (
         <Container maxWidth="xl">
             <Box>
                 {loading && (
-                    <Box sx={{ display: "flex", justifyContent: "center", marginY: 2 }}>
+                    <Box sx={{ display: "flex", justifyContent: "center", padding: 2 }}>
                         <CircularProgress />
                     </Box>
                 )}
                 {error && (
-                    <Typography color="error" variant="body1">
-                        Error: {error.message}
-                    </Typography>
+                    <Box sx={{ padding: 2 }}>
+                        <Typography variant="body1" color="error">
+                            {error.message}
+                        </Typography>
+                    </Box>
                 )}
-                <Typography></Typography>
+                {allRows.length !== 0 && <Button
+                    sx={{
+                        marginRight: 2,
+                        backgroundColor: "#003c4b",
+                        color: "white",
+                        marginTop: "60px",
+                        "&:hover": {
+                            backgroundColor: "#005f6b"
+                        }
+                    }}
+                    onClick={() => navigate("/pivot_table")}
+                >
+                    Pivot Table
+                </Button>}
+
+                {allRows.length !== 0 && <Box mb={2} sx={{ display: "flex", eidth: "30px", justifyContent: "end" }}>
+                    <TextField
+                        label="Search"
+                        variant="outlined"
+                        fullWidth
+                        value={searchQuery}
+                        onChange={handleSearchChange}
+                        sx={{ width: "300px" }}
+                    />
+                </Box>}
                 <TableContainer component={Paper} sx={{ marginBottom: 2, marginTop: "60px", borderRadius: "20px" }}>
                     <MuiTable>
                         <TableHead sx={{ background: "#003c4b " }}>
                             <TableRow>
-                                {Object.keys(allRows[0] || {}).map((key) => (
-                                    <TableCell
-                                        key={key}
-                                        sx={{
-                                            fontWeight: 600,
-                                            fontSize: "16px",
-                                            cursor: "pointer",
-                                            color: "white"
-                                        }}
-                                    >
-                                        <Box
-                                            sx={{
-                                                display: "block",
-                                                gap: "10px",
-                                                alignItems: "center",
-                                            }}
+                                {allRows.length > 0 ? (
+                                    Object.keys(allRows[0] || {}).map((key, index) => (
+                                        <TableCell
+                                            key={index}
+                                            ref={(el) => (tableHeaderRefs.current[index] = el)}
+                                            style={{
+                                                width: `${columnWidths[index] || 100}px`, fontWeight: 600,
+                                                fontSize: "16px",
+                                                cursor: "pointer",
+                                                color: "white"
+                                            }}// Default width
                                         >
-                                            <span onClick={() => handleSort(key)}>{key}</span>
-                                            {sortColumn === key ? (
-                                                sortDirection === "asc" ? (
-                                                    "🔼"
-                                                ) : (
-                                                    "🔽"
-                                                )
-                                            ) : null}
+                                            <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                                <Typography
+                                                    onClick={() => handleSort(key)} sx={{ flex: 1 }}>
+                                                    {key}
+                                                </Typography>
+                                                <Box
+                                                    className="resize-handle"
+                                                    onMouseDown={(e) => handleResizeMouseDown(e, index)}
+                                                    sx={{
+                                                        position: 'absolute',
+                                                        right: 0,
+                                                        top: 0,
+                                                        height: '100%',
+                                                        width: '5px',
+                                                        cursor: 'ew-resize',
+                                                        zIndex: 1,
+                                                        color: "white"
+                                                    }}
+                                                />
+                                            </Box>
                                             <TextField
-                                                variant="outlined"
+                                                placeholder={`Filter by ${key}`}
                                                 size="small"
-                                                placeholder={`Filter ${key}`}
-                                                value={filters[key] || ""}
+                                                variant="outlined"
                                                 onChange={(e) => handleFilterChange(e, key)}
                                                 InputProps={{
                                                     style: {
@@ -212,9 +390,13 @@ const Table = () => {
                                                 }}
                                                 sx={{ marginLeft: "0px", width: "100px" }}
                                             />
-                                        </Box>
+                                        </TableCell>
+                                    ))
+                                ) : (
+                                    <TableCell colSpan={1}>
+                                        <Typography variant="body1">No headers available</Typography>
                                     </TableCell>
-                                ))}
+                                )}
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -238,7 +420,7 @@ const Table = () => {
                                                             fontSize: "10px"
                                                         },
                                                     }}
-                                                    sx={{ width: "100px" }}
+                                                    sx={{ width: columnWidths[index] || "100px" }}
                                                     className="input_field"
                                                 />
                                             </TableCell>
@@ -249,7 +431,7 @@ const Table = () => {
                                 <TableRow>
                                     <TableCell colSpan={Object.keys(allRows[0] || {}).length} align="center">
                                         <Typography variant="body1" sx={{ padding: 2 }}>
-                                            Please wait
+                                            No data available
                                         </Typography>
                                     </TableCell>
                                 </TableRow>
@@ -257,7 +439,13 @@ const Table = () => {
                         </TableBody>
                     </MuiTable>
                 </TableContainer>
-
+                {!loading && !error && selectedColumn && (
+                    <HighchartsReact
+                        highcharts={Highcharts}
+                        constructorType="chart"
+                        options={chartOptions}
+                    />
+                )}
                 {!loading && !error && (
                     <Box
                         sx={{ display: "flex", justifyContent: "end", alignItems: "center" }}
@@ -293,7 +481,6 @@ const Table = () => {
                         >
                             Next
                         </Button>
-
                     </Box>
                 )}
             </Box>

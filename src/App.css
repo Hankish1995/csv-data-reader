@@ -13,6 +13,59 @@
   }
 }
 
+.table {
+  display: block;
+  overflow: auto;
+}
+
+.th {
+  position: relative;
+  display: inline-block;
+  padding: 8px;
+  border: 1px solid #ddd;
+}
+
+.resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.table-header {
+  position: relative;
+}
+
+.resize-handle {
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  position: absolute;
+  right: 0;
+  top: 0;
+  background-color: white;
+  z-index: 1;
+}
+
+.isResizing {
+  background: #000;
+}
+
+.tr {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+}
+
+.td {
+  padding: 8px;
+  border: 1px solid #ddd;
+  flex: 1;
+  overflow: hidden;
+}
+
 .App-header {
   background-color: #282c34;
   min-height: 100vh;
